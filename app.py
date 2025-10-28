@@ -10,11 +10,20 @@ from datetime import datetime, timedelta
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+# 🔹 NUEVO: importar CORS
+from flask_cors import CORS
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'tu_clave_secreta'
 app.config['JWT_SECRET_KEY'] = 'clave_secreta_para_jwt'
 jwt = JWTManager(app)
+
+# 🔹 NUEVO: permitir solicitudes desde tu frontend en Vercel
+CORS(app, resources={r"/*": {"origins": [
+    "https://frontend-hiper-ceramica-ck.vercel.app",
+    "http://localhost:5500",  # opcional, útil para pruebas locales
+    "http://127.0.0.1:5500"
+]}})
 
 # ---------------------------------
 # Configuración Base De Datos
