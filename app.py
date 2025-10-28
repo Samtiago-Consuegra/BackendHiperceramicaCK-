@@ -138,49 +138,67 @@ def obtener_productos():
 # ---------------------------------
 # Dashboard / Reportes
 # ---------------------------------
-@app.route('/api/ventas/dia', methods=['GET'])
+
+@app.route("/api/ventas/dia", methods=["GET"])
 def ventas_dia():
-    fecha = request.args.get('fecha', date.today())
-    db = get_db_connection()
-    cursor = db.cursor(dictionary=True)
-    cursor.execute("""
-        SELECT IFNULL(SUM(total), 0) AS total_dia
-        FROM ventas
-        WHERE DATE(fecha_venta) = %s
-    """, (fecha,))
-    resultado = cursor.fetchone()
-    db.close()
-    return jsonify({"total_dia": resultado["total_dia"]})
+    """Obtiene las ventas totales del día especificado o el actual"""
+    try:
+        fecha = request.args.get("fecha", date.today())
+        db = get_db_connection()
+        cursor = db.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT IFNULL(SUM(total), 0) AS total_dia
+            FROM ventas
+            WHERE DATE(fecha_venta) = %s
+        """, (fecha,))
+        resultado = cursor.fetchone()
+        db.close()
+        return jsonify({"total_dia": resultado["total_dia"]}), 200
+    except Exception as e:
+        print("❌ Error en /api/ventas/dia:", e)
+        return jsonify({"error": str(e)}), 500
 
 
-@app.route('/api/ventas/mes', methods=['GET'])
+@app.route("/api/ventas/mes", methods=["GET"])
 def ventas_mes():
-    mes = request.args.get('mes', datetime.now().month)
-    anio = request.args.get('anio', datetime.now().year)
-    db = get_db_connection()
-    cursor = db.cursor(dictionary=True)
-    cursor.execute("""
-        SELECT IFNULL(SUM(total), 0) AS total_mes
-        FROM ventas
-        WHERE MONTH(fecha_venta) = %s AND YEAR(fecha_venta) = %s
-    """, (mes, anio))
-    resultado = cursor.fetchone()
-    db.close()
-    return jsonify({"total_mes": resultado["total_mes"]})
+    """Obtiene las ventas totales del mes y año indicados"""
+    try:
+        mes = request.args.get("mes", datetime.now().month)
+        anio = request.args.get("anio", datetime.now().year)
+        db = get_db_connection()
+        cursor = db.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT IFNULL(SUM(total), 0) AS total_mes
+            FROM ventas
+            WHERE MONTH(fecha_venta) = %s AND YEAR(fecha_venta) = %s
+        """, (mes, anio))
+        resultado = cursor.fetchone()
+        db.close()
+        return jsonify({"total_mes": resultado["total_mes"]}), 200
+    except Exception as e:
+        print("❌ Error en /api/ventas/mes:", e)
+        return jsonify({"error": str(e)}), 500
 
 
-@app.route('/api/inventario/bajo', methods=['GET'])
+@app.route("/api/inventario/bajo", methods=["GET"])
 def productos_bajo_inventario():
-    db = get_db_connection()
-    cursor = db.cursor(dictionary=True)
-    cursor.execute("""
-        SELECT nombre, stock, stock_minimo
-        FROM inventario
-        WHERE stock < stock_minimo
-    """)
-    productos = cursor.fetchall()
-    db.close()
-    return jsonify(productos)
+    """Devuelve los productos con stock menor al mínimo"""
+    try:
+        db = get_db_connection()
+        cursor = db.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT id, nombre, codigo, stock, stock_minimo, estado_stock
+            FROM inventario
+            WHERE stock < stock_minimo
+        """)
+        productos = cursor.fetchall()
+        db.close()
+        return jsonify(productos), 200
+    except Exception as e:
+        print("❌ Error en /api/inventario/bajo:", e)
+        return jsonify({"error": str(e)}), 500
+
+
 
 # ---------------------------------
 # Archivos estáticos
