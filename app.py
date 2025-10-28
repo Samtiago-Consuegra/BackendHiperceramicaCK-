@@ -1,29 +1,21 @@
-from flask import Flask, request, jsonify, send_from_directory, make_response
-from flask_jwt_extended import JWTManager, create_access_token, jwt_required
+from flask import Flask, request, jsonify, send_from_directory
+from flask_jwt_extended import JWTManager, create_access_token
 from werkzeug.security import generate_password_hash, check_password_hash
-import mysql.connector
-from datetime import datetime, date, time, timedelta, timezone
-import os
-import pytz
-from fpdf import FPDF
-from datetime import datetime, timedelta
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-# 🔹 NUEVO: importar CORS
 from flask_cors import CORS
+import mysql.connector
+from datetime import datetime, date
+import os
 
+# ---------------------------------
+# Configuración General
+# ---------------------------------
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'tu_clave_secreta'
 app.config['JWT_SECRET_KEY'] = 'clave_secreta_para_jwt'
 jwt = JWTManager(app)
 
-# 🔹 NUEVO: permitir solicitudes desde tu frontend en Vercel
-CORS(app, resources={r"/*": {"origins": [
-    "https://frontend-hiper-ceramica-ck.vercel.app",
-    "http://localhost:5500",  # opcional, útil para pruebas locales
-    "http://127.0.0.1:5500"
-]}})
+# ✅ Permitir conexión con el frontend de Vercel
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 # ---------------------------------
 # Configuración Base De Datos
@@ -38,27 +30,21 @@ DB_CONFIG = {
 def get_db_connection():
     return mysql.connector.connect(**DB_CONFIG)
 
-db = get_db_connection()
-cursor = db.cursor()
-db.commit()
-db.close()
-
 # ---------------------------------
-# RUTA DE VERIFICACIÓN DEL SERVICIO
+# Ruta de Verificación del Servicio
 # ---------------------------------
 @app.route('/status', methods=['GET'])
 def status():
-    """Ruta para verificar que la API funciona correctamente."""
     return jsonify({
         "status": "ok",
         "message": "API HiperCerámica CK funcionando correctamente ✅",
-        "version": "1.0",
+        "version": "1.1",
         "timestamp": datetime.now().isoformat()
     }), 200
 
-# --------------------------
-# Apartado Inicio De Sesión
-# --------------------------
+# ---------------------------------
+# Inicio de Sesión
+# ---------------------------------
 @app.route('/login', methods=['POST'])
 def login():
     data = request.json
@@ -67,17 +53,12 @@ def login():
     cursor.execute("SELECT * FROM empleados WHERE correo = %s", (data['correo'],))
     user = cursor.fetchone()
     db.close()
+
     if user and check_password_hash(user[4], data['contraseña']):
         access_token = create_access_token(identity=user[0])
         rol_id = user[7]
-        if rol_id == 1:
-            rol = "administrador"
-        elif rol_id == 2:
-            rol = "empleado"
-        elif rol_id == 3:
-            rol = "bodeguero"
-        else:
-            rol = "desconocido"
+        rol = {1: "administrador", 2: "empleado", 3: "bodeguero"}.get(rol_id, "desconocido")
+
         return jsonify({
             "access_token": access_token,
             "nombre": user[1],
@@ -87,17 +68,19 @@ def login():
             "rol": rol,
             "redirect": "main.html"
         })
+
     return jsonify({"message": "Credenciales incorrectas"}), 401
 
-# ----------------------------------
-# Apartado Registrar Empleados
-# ----------------------------------
+# ---------------------------------
+# Registro de Empleados
+# ---------------------------------
 @app.route('/register', methods=['POST'])
 def register():
     data = request.json
     required = ('nombre_apellido', 'cedula', 'correo', 'contraseña')
     if not data or not all(k in data for k in required):
         return jsonify({"message": "Faltan campos obligatorios"}), 400
+
     hashed = generate_password_hash(data['contraseña'])[:255]
     db = get_db_connection()
     cursor = db.cursor()
@@ -114,7 +97,7 @@ def register():
     return jsonify({"message": "Empleado registrado"}), 201
 
 # ---------------------------------
-# Apartado Inventario
+# Inventario
 # ---------------------------------
 @app.route('/api/inventario', methods=['POST'])
 def agregar_producto():
@@ -122,9 +105,11 @@ def agregar_producto():
     campos = ('nombre', 'codigo', 'categoria', 'marca', 'proveedor', 'precio', 'stock', 'calidad')
     if not all(k in data for k in campos):
         return jsonify({"message": "Faltan campos del producto"}), 400
+
     stock = int(data['stock'])
     stock_minimo = 50
     estado_stock = 'Bajo' if stock < stock_minimo else 'Bueno'
+
     db = get_db_connection()
     cursor = db.cursor()
     cursor.execute("""
@@ -140,6 +125,7 @@ def agregar_producto():
     db.close()
     return jsonify({"message": "Producto agregado exitosamente"}), 201
 
+
 @app.route('/api/inventario', methods=['GET'])
 def obtener_productos():
     db = get_db_connection()
@@ -149,31 +135,52 @@ def obtener_productos():
     db.close()
     return jsonify(productos)
 
-# --------------------------------
-# Apartado Clientes
-# --------------------------------
-@app.route('/api/clientes', methods=['POST'])
-def crear_cliente():
-    data = request.json
-    db = get_db_connection()
-    cursor = db.cursor()
-    cursor.execute("""
-        INSERT INTO clientes (nombre_apellido, cedula, correo, telefono, direccion)
-        VALUES (%s, %s, %s, %s, %s)
-    """, (data['nombre_apellido'], data['cedula'], data['correo'], data['telefono'], data['direccion']))
-    db.commit()
-    cliente_id = cursor.lastrowid
-    db.close()
-    return jsonify({"message": "Cliente registrado", "cliente_id": cliente_id}), 201
-
-@app.route('/api/clientes', methods=['GET'])
-def listar_clientes():
+# ---------------------------------
+# Dashboard / Reportes
+# ---------------------------------
+@app.route('/api/ventas/dia', methods=['GET'])
+def ventas_dia():
+    fecha = request.args.get('fecha', date.today())
     db = get_db_connection()
     cursor = db.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM clientes ORDER BY fecha_registro DESC")
-    clientes = cursor.fetchall()
+    cursor.execute("""
+        SELECT IFNULL(SUM(total), 0) AS total_dia
+        FROM ventas
+        WHERE DATE(fecha_venta) = %s
+    """, (fecha,))
+    resultado = cursor.fetchone()
     db.close()
-    return jsonify(clientes)
+    return jsonify({"total_dia": resultado["total_dia"]})
+
+
+@app.route('/api/ventas/mes', methods=['GET'])
+def ventas_mes():
+    mes = request.args.get('mes', datetime.now().month)
+    anio = request.args.get('anio', datetime.now().year)
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT IFNULL(SUM(total), 0) AS total_mes
+        FROM ventas
+        WHERE MONTH(fecha_venta) = %s AND YEAR(fecha_venta) = %s
+    """, (mes, anio))
+    resultado = cursor.fetchone()
+    db.close()
+    return jsonify({"total_mes": resultado["total_mes"]})
+
+
+@app.route('/api/inventario/bajo', methods=['GET'])
+def productos_bajo_inventario():
+    db = get_db_connection()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT nombre, stock, stock_minimo
+        FROM inventario
+        WHERE stock < stock_minimo
+    """)
+    productos = cursor.fetchall()
+    db.close()
+    return jsonify(productos)
 
 # ---------------------------------
 # Archivos estáticos
