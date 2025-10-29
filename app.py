@@ -38,7 +38,7 @@ def status():
     return jsonify({
         "status": "ok",
         "message": "API HiperCerámica CK funcionando correctamente ✅",
-        "version": "1.1",
+        "version": "1.2",
         "timestamp": datetime.now().isoformat()
     }), 200
 
@@ -72,7 +72,7 @@ def login():
     return jsonify({"message": "Credenciales incorrectas"}), 401
 
 # ---------------------------------
-# Registro de Empleados
+# Registro de Empleados (registro directo)
 # ---------------------------------
 @app.route('/register', methods=['POST'])
 def register():
@@ -148,16 +148,12 @@ def ventas_dia():
         db = get_db_connection()
         cursor = db.cursor(dictionary=True)
 
-        # Detectar las columnas reales de la tabla ventas
         cursor.execute("SHOW COLUMNS FROM ventas")
         columnas = [col["Field"] for col in cursor.fetchall()]
-        print("🧩 Columnas detectadas en tabla ventas:", columnas)
 
-        # Detectar automáticamente los nombres
         campo_fecha = "fecha_venta" if "fecha_venta" in columnas else "fecha"
         campo_total = "total" if "total" in columnas else "monto"
 
-        # Ejecutar consulta
         query = f"""
             SELECT IFNULL(SUM({campo_total}), 0) AS total_dia
             FROM ventas
@@ -167,13 +163,11 @@ def ventas_dia():
         resultado = cursor.fetchone()
         db.close()
 
-        print("✅ Resultado /api/ventas/dia:", resultado)
         return jsonify({"total_dia": resultado["total_dia"]}), 200
 
     except Exception as e:
         print("❌ Error en /api/ventas/dia:", e)
         return jsonify({"error": str(e)}), 500
-
 
 
 @app.route("/api/ventas/mes", methods=["GET"])
@@ -186,12 +180,9 @@ def ventas_mes():
         db = get_db_connection()
         cursor = db.cursor(dictionary=True)
 
-        # Verificar estructura real de la tabla
         cursor.execute("SHOW COLUMNS FROM ventas")
         columnas = [col["Field"] for col in cursor.fetchall()]
-        print("🧩 Columnas detectadas en ventas:", columnas)
 
-        # Detectar automáticamente el campo de fecha
         campo_fecha = "fecha_venta" if "fecha_venta" in columnas else "fecha"
         campo_total = "total" if "total" in columnas else "monto"
 
@@ -205,13 +196,11 @@ def ventas_mes():
         resultado = cursor.fetchone()
         db.close()
 
-        print("✅ Resultado /api/ventas/mes:", resultado)
         return jsonify({"total_mes": resultado["total_mes"]}), 200
 
     except Exception as e:
         print("❌ Error en /api/ventas/mes:", e)
         return jsonify({"error": str(e)}), 500
-
 
 
 @app.route("/api/inventario/bajo", methods=["GET"])
@@ -232,7 +221,77 @@ def productos_bajo_inventario():
         print("❌ Error en /api/inventario/bajo:", e)
         return jsonify({"error": str(e)}), 500
 
+# ---------------------------------
+# Gestión de Empleados (para vista empleados.html)
+# ---------------------------------
+@app.route("/api/empleados", methods=["GET"])
+def obtener_empleados():
+    """Devuelve la lista de empleados registrados"""
+    try:
+        db = get_db_connection()
+        cursor = db.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT 
+                id, 
+                nombre_apellido, 
+                cedula, 
+                correo, 
+                telefono, 
+                direccion, 
+                rol_id,
+                CASE 
+                    WHEN rol_id = 1 THEN 'Administrador'
+                    WHEN rol_id = 2 THEN 'Empleado'
+                    WHEN rol_id = 3 THEN 'Bodeguero'
+                    ELSE 'Desconocido'
+                END AS rol,
+                fecha_registro
+            FROM empleados
+            ORDER BY fecha_registro DESC
+        """)
+        empleados = cursor.fetchall()
+        db.close()
+        return jsonify(empleados), 200
+    except Exception as e:
+        print("❌ Error en /api/empleados:", e)
+        return jsonify({"error": str(e)}), 500
 
+
+@app.route("/api/empleados", methods=["POST"])
+def registrar_empleado():
+    """Crea un nuevo empleado"""
+    try:
+        data = request.json
+        required_fields = ["nombre_apellido", "cedula", "correo", "contraseña"]
+
+        if not all(campo in data for campo in required_fields):
+            return jsonify({"error": "Faltan campos obligatorios"}), 400
+
+        hashed_password = generate_password_hash(data["contraseña"])[:255]
+
+        db = get_db_connection()
+        cursor = db.cursor()
+        cursor.execute("""
+            INSERT INTO empleados 
+            (nombre_apellido, cedula, correo, contraseña, telefono, direccion, rol_id, fecha_registro)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, (
+            data["nombre_apellido"],
+            data["cedula"],
+            data["correo"],
+            hashed_password,
+            data.get("telefono", ""),
+            data.get("direccion", ""),
+            data.get("rol_id", 2),
+            datetime.now().date()
+        ))
+        db.commit()
+        db.close()
+        return jsonify({"message": "Empleado registrado correctamente"}), 201
+
+    except Exception as e:
+        print("❌ Error en POST /api/empleados:", e)
+        return jsonify({"error": str(e)}), 500
 
 # ---------------------------------
 # Archivos estáticos
