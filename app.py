@@ -161,23 +161,40 @@ def ventas_dia():
 
 @app.route("/api/ventas/mes", methods=["GET"])
 def ventas_mes():
-    """Obtiene las ventas totales del mes y año indicados"""
+    """Obtiene el total de ventas del mes y año indicados"""
     try:
         mes = request.args.get("mes", datetime.now().month)
         anio = request.args.get("anio", datetime.now().year)
+
         db = get_db_connection()
         cursor = db.cursor(dictionary=True)
-        cursor.execute("""
-            SELECT IFNULL(SUM(total), 0) AS total_mes
+
+        # Verificar estructura real de la tabla
+        cursor.execute("SHOW COLUMNS FROM ventas")
+        columnas = [col["Field"] for col in cursor.fetchall()]
+        print("🧩 Columnas detectadas en ventas:", columnas)
+
+        # Detectar automáticamente el campo de fecha
+        campo_fecha = "fecha_venta" if "fecha_venta" in columnas else "fecha"
+        campo_total = "total" if "total" in columnas else "monto"
+
+        query = f"""
+            SELECT IFNULL(SUM({campo_total}), 0) AS total_mes
             FROM ventas
-            WHERE MONTH(fecha_venta) = %s AND YEAR(fecha_venta) = %s
-        """, (mes, anio))
+            WHERE MONTH({campo_fecha}) = %s AND YEAR({campo_fecha}) = %s
+        """
+
+        cursor.execute(query, (mes, anio))
         resultado = cursor.fetchone()
         db.close()
+
+        print("✅ Resultado /api/ventas/mes:", resultado)
         return jsonify({"total_mes": resultado["total_mes"]}), 200
+
     except Exception as e:
         print("❌ Error en /api/ventas/mes:", e)
         return jsonify({"error": str(e)}), 500
+
 
 
 @app.route("/api/inventario/bajo", methods=["GET"])
