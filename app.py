@@ -141,22 +141,39 @@ def obtener_productos():
 
 @app.route("/api/ventas/dia", methods=["GET"])
 def ventas_dia():
-    """Obtiene las ventas totales del día especificado o el actual"""
+    """Obtiene el total de ventas del día indicado"""
     try:
         fecha = request.args.get("fecha", date.today())
+
         db = get_db_connection()
         cursor = db.cursor(dictionary=True)
-        cursor.execute("""
-            SELECT IFNULL(SUM(total), 0) AS total_dia
+
+        # Detectar las columnas reales de la tabla ventas
+        cursor.execute("SHOW COLUMNS FROM ventas")
+        columnas = [col["Field"] for col in cursor.fetchall()]
+        print("🧩 Columnas detectadas en tabla ventas:", columnas)
+
+        # Detectar automáticamente los nombres
+        campo_fecha = "fecha_venta" if "fecha_venta" in columnas else "fecha"
+        campo_total = "total" if "total" in columnas else "monto"
+
+        # Ejecutar consulta
+        query = f"""
+            SELECT IFNULL(SUM({campo_total}), 0) AS total_dia
             FROM ventas
-            WHERE DATE(fecha_venta) = %s
-        """, (fecha,))
+            WHERE DATE({campo_fecha}) = %s
+        """
+        cursor.execute(query, (fecha,))
         resultado = cursor.fetchone()
         db.close()
+
+        print("✅ Resultado /api/ventas/dia:", resultado)
         return jsonify({"total_dia": resultado["total_dia"]}), 200
+
     except Exception as e:
         print("❌ Error en /api/ventas/dia:", e)
         return jsonify({"error": str(e)}), 500
+
 
 
 @app.route("/api/ventas/mes", methods=["GET"])
