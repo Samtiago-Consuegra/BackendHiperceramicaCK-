@@ -243,7 +243,9 @@ def obtener_empleados():
         cursor.execute("""
             SELECT 
                 id, 
-                nombre_apellido, 
+                nombre_apellido,
+                SUBSTRING_INDEX(nombre_apellido, ' ', 1) AS nombre,          -- 👈 primer nombre
+                SUBSTRING_INDEX(nombre_apellido, ' ', -1) AS apellido,       -- 👈 último apellido
                 cedula, 
                 correo, 
                 telefono, 
@@ -255,6 +257,7 @@ def obtener_empleados():
                     WHEN rol_id = 3 THEN 'Bodeguero'
                     ELSE 'Desconocido'
                 END AS rol,
+                'Activo' AS estado,   -- 👈 valor por defecto
                 fecha_registro
             FROM empleados
             ORDER BY fecha_registro DESC
@@ -265,6 +268,7 @@ def obtener_empleados():
     except Exception as e:
         print("❌ Error en /api/empleados:", e)
         return jsonify({"error": str(e)}), 500
+
 
 
 @app.route("/api/empleados", methods=["POST"])
