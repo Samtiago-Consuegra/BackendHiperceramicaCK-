@@ -210,7 +210,16 @@ def productos_bajo_inventario():
         db = get_db_connection()
         cursor = db.cursor(dictionary=True)
         cursor.execute("""
-            SELECT id, nombre, codigo, stock, stock_minimo, estado_stock
+            SELECT 
+                id, 
+                nombre, 
+                codigo, 
+                categoria, 
+                marca, 
+                precio, 
+                stock, 
+                stock_minimo, 
+                estado_stock
             FROM inventario
             WHERE stock < stock_minimo
         """)
@@ -220,6 +229,7 @@ def productos_bajo_inventario():
     except Exception as e:
         print("❌ Error en /api/inventario/bajo:", e)
         return jsonify({"error": str(e)}), 500
+
 
 # ---------------------------------
 # Gestión de Empleados (para vista empleados.html)
